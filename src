@@ -1,0 +1,93 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow.contrib import rnn
+from tensorflow.examples.tutorials.mnist import input_data
+
+tf.reset_default_graph()
+
+df=input_data.read_data_sets("/tmp/data/",one_hot=True)
+
+###Neural Network Parameters
+### 28*28=784
+num_inputs = 28 #[Sequences] 
+time_steps=28 #[timesteps]
+
+num_h = 128 
+num_classes=10
+
+###Tensorflow data inputs
+X=tf.placeholder("float",shape=[None,time_steps,num_inputs])
+Y=tf.placeholder("float",shape=[None,num_classes])
+
+### Neural Network training parameters
+batch_size=128
+num_steps=1000
+learning_rate=1e-1
+display_step=1000
+
+###Creating Network Architechture
+def Rec_Net(X,W,b):
+
+    X = tf.unstack(X, time_steps, 1)
+
+    lstm_cell = rnn.BasicLSTMCell(num_h, forget_bias=1.0)
+
+    outputs, states = rnn.static_rnn(lstm_cell, X, dtype=tf.float32)
+
+    return tf.matmul(outputs[-1], W['w1']) + b['b1']
+
+
+
+###Model Architechture Weights
+W={"w1":tf.Variable(tf.random_normal([num_h, num_classes]))} 
+
+b={"b1":tf.Variable(tf.random_normal([num_classes]))}
+
+###Cost function Optimization & Model Evaluation
+probs=Rec_Net(X, W, b)
+predicted=tf.nn.softmax(probs)
+
+optim=tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+cost_fn=tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=probs,labels=Y))
+training=optim.minimize(cost_fn)
+
+
+actual=tf.argmax(Y,1)               ##   [[1,10,20],
+                                    ##    [5,7,30]]
+preds=tf.argmax(predicted,1)
+
+accuracy=tf.equal(actual,preds)
+accuracy=tf.cast(accuracy,tf.float32)
+accuracy=tf.reduce_mean(accuracy)
+
+# Initialize the variables (i.e. assign their default value)
+init = tf.global_variables_initializer()
+
+###Staring the Model training Session
+with tf.Session() as sess:
+
+    # Run the initializer
+    sess.run(init)
+
+    for step in range(1, num_steps+1):
+        batch_x, batch_y = df.train.next_batch(batch_size)
+        batch_x = batch_x.reshape((batch_size, time_steps, num_inputs))
+        # Run optimization op (backprop)
+        sess.run(training, feed_dict={X: batch_x, Y: batch_y})
+        if step % display_step == 0 or step == 1:
+            # Calculate batch loss and accuracy
+            loss, acc = sess.run([cost_fn, accuracy], feed_dict={X: batch_x,
+                                                                 Y: batch_y})
+            print("Step " + str(step) +   ",   Minibatch Loss= " + \
+                  "{:.4f}".format(loss) + ", Training Accuracy= " + \
+                  "{:.3f}".format(acc))
+
+    print("Optimization Finished!")
+    
+    # Calculate accuracy for 256 MNIST test images
+    print("Testing Accuracy:", \
+    sess.run(accuracy, feed_dict={X: df.test.images[:128].reshape((-1, time_steps, num_inputs)),
+                                      Y: df.test.labels[:128]}))
+
+
